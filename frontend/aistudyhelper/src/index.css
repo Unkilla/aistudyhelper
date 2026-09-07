@@ -1,0 +1,4 @@
+:root { font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; color: #24333a; background: #f8f8f5; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-width: 320px; }
+button { font: inherit; }
+* { box-sizing: border-box; }
