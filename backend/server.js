@@ -96,7 +96,7 @@ app.post("/api/generate", upload.single("file"), async (req, res) => {
     const retrieved = await retrieve(notes, `${type} ${req.body.prompt || "study these school notes"}`)
     const context = retrieved.context.join("\n\n")
     const completion = await groq.chat.completions.create({
-      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [
