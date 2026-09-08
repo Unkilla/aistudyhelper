@@ -1,1 +1,3 @@
-/backend
+/backend/.env
+/backend/node_modules/
+/frontend/aistudyhelper/.env

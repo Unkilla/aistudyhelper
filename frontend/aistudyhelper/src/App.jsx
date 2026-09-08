@@ -6,6 +6,10 @@ function App() {
   const [selectedTool, setSelectedTool] = useState('Lesson')
   const [uploaded, setUploaded] = useState(false)
   const [fileName, setFileName] = useState('')
+  const [noteFile, setNoteFile] = useState(null)
+  const [generated, setGenerated] = useState(null)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState('')
   const [answer, setAnswer] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [actionMessage, setActionMessage] = useState('')
@@ -27,11 +31,34 @@ function App() {
     Settings: { eyebrow: 'PREFERENCES', title: 'Workspace settings', copy: 'Personalize your study experience, notifications, and generation preferences.', icon: '⚙', action: 'Save preferences' },
   }
   const currentPage = pageDetails[activeNav] || pageDetails['My materials']
-  const goToTool = (toolName) => { setSelectedTool(toolName); setActiveNav(toolName) }
+  const goToTool = (toolName) => { setSelectedTool(toolName); setActiveNav(toolName); if (noteFile) generate(toolName, noteFile) }
   const handleFile = (file) => {
     if (!file) return
+    setNoteFile(file)
     setFileName(file.name)
     setUploaded(true)
+    setGenerated(null)
+    setError('')
+  }
+  async function generate(toolName, file = noteFile) {
+    if (!file) { setError('Upload school notes before generating content.'); return }
+    setGenerating(true)
+    setError('')
+    const body = new FormData()
+    body.append('file', file)
+    body.append('type', toolName.toLowerCase())
+    try {
+      const backendDomain = (import.meta.env.VITE_BACKEND_DOMAIN || 'http://localhost:3001').replace(/\/$/, '')
+      const response = await fetch(`${backendDomain}/api/generate`, { method: 'POST', body })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Generation failed')
+      setGenerated(payload)
+      setActiveNav(toolName)
+    } catch (generationError) {
+      setError(generationError.message)
+    } finally {
+      setGenerating(false)
+    }
   }
   const handlePageAction = () => {
     if (activeNav === 'Practice') {
@@ -40,6 +67,10 @@ function App() {
     }
     if (activeNav === 'Settings') {
       setActionMessage('Preferences saved for this workspace.')
+      return
+    }
+    if (['Lesson', 'Quiz', 'Slides'].includes(activeNav)) {
+      generate(activeNav)
       return
     }
     setActiveNav('Overview')
@@ -62,7 +93,7 @@ function App() {
           <div className="dashboard-grid"><section className="panel upload-panel"><div className="section-heading"><div><p className="eyebrow">START LEARNING</p><h2>Bring your notes to life</h2></div><button className="text-button" onClick={() => setActiveNav('Lesson')}>How it works <span>→</span></button></div><input id="note-file-input" className="file-input" type="file" accept=".pdf,.docx,.pptx,image/*" onChange={(event) => handleFile(event.target.files[0])} /><div id="upload-zone" className={`upload-zone ${uploaded ? 'uploaded' : ''}`} onClick={() => document.getElementById('note-file-input').click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); handleFile(event.dataTransfer.files[0]) }} role="button" tabIndex="0" onKeyDown={(event) => { if (event.key === 'Enter') document.getElementById('note-file-input').click() }}>{uploaded ? <><div className="file-icon">✓</div><div><strong>{fileName || 'Notes ready to transform'}</strong><span>Choose a generator below to get started</span></div><button className="change-file" onClick={(event) => { event.stopPropagation(); setUploaded(false); setFileName('') }}>Change file</button></> : <><div className="upload-icon">↑</div><div><strong>Drop your notes here, or <u>browse files</u></strong><span>PDF, DOCX, PPTX or images · up to 25 MB</span></div></>}</div><div className="tool-list">{tools.map((tool) => <button key={tool.name} className={`tool-row ${selectedTool === tool.name ? 'selected' : ''}`} onClick={() => goToTool(tool.name)}><span className="tool-icon">{tool.icon}</span><span><strong>{tool.name}</strong><small>{tool.copy}</small></span><span className="row-arrow">→</span></button>)}</div></section>
             <section className="panel focus-panel"><div className="section-heading"><div><p className="eyebrow">YOUR FOCUS</p><h2>Continue learning</h2></div><button className="dots" aria-label="Open materials" onClick={() => setActiveNav('My materials')}>•••</button></div><div className="focus-hero"><div className="subject-tag">SAVED LESSON <span>·</span> IN PROGRESS</div><h3>Continue your latest lesson</h3><p>Pick a lesson from your materials to begin</p><div className="lesson-progress"><span /></div><button className="dark-button" onClick={() => setActiveNav('My materials')}>Open materials <span>→</span></button></div><button className="next-up" onClick={() => setActiveNav('Practice')}><div className="next-icon">?</div><div><small>NEXT UP</small><strong>Exam-like questions</strong><span>Practice from your notes</span></div><span className="row-arrow">→</span></button></section></div>
           <div className="bottom-grid"><section className="panel question-panel"><div className="section-heading"><div><p className="eyebrow">EXAM PREP</p><h2>Question of the day</h2></div><span className="difficulty">MEDIUM</span></div><p className="question">Which molecule is the final electron acceptor in the electron transport chain?</p><div className="answer-row"><button className={`answer-option ${answer === 'Oxygen' ? 'chosen' : ''}`} onClick={() => setAnswer('Oxygen')}><span>A</span> Oxygen</button><button className={`answer-option ${answer === 'Glucose' ? 'chosen' : ''}`} onClick={() => setAnswer('Glucose')}><span>B</span> Glucose</button><button className={`answer-option ${answer === 'ATP' ? 'chosen' : ''}`} onClick={() => setAnswer('ATP')}><span>C</span> ATP</button><button className={`answer-option ${answer === 'NADH' ? 'chosen' : ''}`} onClick={() => setAnswer('NADH')}><span>D</span> NADH</button></div><button className="submit-button" onClick={submitAnswer} disabled={!answer}>{submitted ? (answer === 'Oxygen' ? 'Correct! Nice work' : 'Review answer') : 'Check answer'}</button></section><section className="panel activity-panel"><div className="section-heading"><div><p className="eyebrow">YOUR MATERIALS</p><h2>Keep exploring</h2></div><button className="text-button" onClick={() => setActiveNav('My materials')}>View library <span>→</span></button></div><div className="empty-activity"><div className="activity-thumb peach">＋</div><div><strong>Your next study session starts here</strong><span>Upload notes to see your materials</span></div></div><button className="library-link" onClick={() => setActiveNav('My materials')}>Open my materials <span>→</span></button></section></div>
-          </> : <section className="page-view"><div className="page-icon">{currentPage.icon}</div><p className="eyebrow">{currentPage.eyebrow}</p><h1>{currentPage.title}</h1><p className="page-copy">{currentPage.copy}</p><button className="primary-button" onClick={handlePageAction}>{currentPage.action} <span>→</span></button>{actionMessage && <p className="action-message" role="status">{actionMessage}</p>}<button className="back-button" onClick={() => setActiveNav('Overview')}>Back to overview</button></section>}
+          </> : <section className="page-view"><div className="page-icon">{currentPage.icon}</div><p className="eyebrow">{currentPage.eyebrow}</p><h1>{generated?.result?.title || currentPage.title}</h1><p className="page-copy">{generated ? `Generated from ${generated.fileName}` : currentPage.copy}</p>{generated ? <div className="generated-result"><pre>{JSON.stringify(generated.result, null, 2)}</pre></div> : <button className="primary-button" onClick={handlePageAction}>{generating ? 'Generating...' : currentPage.action} <span>→</span></button>}{error && <p className="error-message" role="alert">{error}</p>}{actionMessage && <p className="action-message" role="status">{actionMessage}</p>}<button className="back-button" onClick={() => setActiveNav('Overview')}>Back to overview</button></section>}
         </div>
       </main>
     </div>
