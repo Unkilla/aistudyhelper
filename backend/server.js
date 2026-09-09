@@ -1,7 +1,6 @@
 import "dotenv/config"
 import cors from "cors"
 import express from "express"
-import multer from "multer"
 import mammoth from "mammoth"
 import pdf from "pdf-parse"
 import AdmZip from "adm-zip"
@@ -10,12 +9,9 @@ import { promises as fs } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import Groq from "groq-sdk"
+import { handleUpload } from "@vercel/blob/client"
 
 const app = express()
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
-})
 const port = Number(process.env.PORT || 3001)
 const backendDomain = (process.env.BACKEND_DOMAIN || `http://localhost:${port}`).replace(/\/$/, "")
 const allowedOrigins = (process.env.FRONTEND_DOMAIN || "http://localhost:5173")
@@ -84,14 +80,56 @@ const schemas = {
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, groqConfigured: Boolean(groq) }))
 
-app.post("/api/generate", upload.single("file"), async (req, res) => {
+// Step 1: client asks here first. We hand back a short-lived token that lets the
+// browser upload straight to Vercel Blob, completely bypassing this server's
+// (and Vercel's) request body limit.
+app.post("/api/upload", async (req, res) => {
+  try {
+    const jsonResponse = await handleUpload({
+      body: req.body,
+      request: req,
+      onBeforeGenerateToken: async (pathname, clientPayload) => {
+        return {
+          allowedContentTypes: [
+            "text/plain",
+            "text/markdown",
+            "text/csv",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          ],
+          maximumSizeInBytes: 100 * 1024 * 1024, // 100MB, way past the old 4.5MB wall
+          addRandomSuffix: true,
+        }
+      },
+      onUploadCompleted: async ({ blob }) => {
+        console.log("Blob upload completed:", blob.url)
+      },
+    })
+    res.json(jsonResponse)
+  } catch (error) {
+    console.error(error)
+    res.status(400).json({ error: error.message || "Upload token request failed" })
+  }
+})
+
+app.post("/api/generate", express.json({ limit: "1mb" }), async (req, res) => {
   try {
     if (!groq) return res.status(503).json({ error: "GROQ_API_KEY is not configured in backend/.env" })
-    if (!req.file) return res.status(400).json({ error: "Attach a notes file in the file field." })
+    const { fileUrl, fileName } = req.body
+    if (!fileUrl || !fileName) return res.status(400).json({ error: "fileUrl and fileName are required. Upload the file to Blob first." })
 
     const type = String(req.body.type || "lesson").toLowerCase()
     if (!schemas[type]) return res.status(400).json({ error: "type must be lesson, quiz, or slides" })
-    const notes = await extractText(req.file)
+
+    // Step 2: fetch the actual file content from Blob storage, server-side,
+    // now that it's already safely uploaded.
+    const blobResponse = await fetch(fileUrl)
+    if (!blobResponse.ok) return res.status(400).json({ error: "Could not retrieve the uploaded file from storage." })
+    const arrayBuffer = await blobResponse.arrayBuffer()
+    const file = { originalname: fileName, buffer: Buffer.from(arrayBuffer) }
+
+    const notes = await extractText(file)
     if (!notes.trim()) return res.status(422).json({ error: "No readable text was found in that file." })
     const retrieved = await retrieve(notes, `${type} ${req.body.prompt || "study these school notes"}`)
     const context = retrieved.context.join("\n\n")
@@ -106,7 +144,7 @@ app.post("/api/generate", upload.single("file"), async (req, res) => {
     })
     const content = completion.choices[0]?.message?.content
     if (!content) throw new Error("Groq returned an empty response")
-    res.json({ type, fileName: req.file.originalname, result: JSON.parse(content), chunkCount: retrieved.chunkCount })
+    res.json({ type, fileName, result: JSON.parse(content), chunkCount: retrieved.chunkCount })
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: error.message || "Generation failed" })
@@ -114,7 +152,6 @@ app.post("/api/generate", upload.single("file"), async (req, res) => {
 })
 
 app.use((error, _req, res, _next) => {
-  if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "Files must be 25 MB or smaller." })
   res.status(500).json({ error: error.message || "Unexpected server error" })
 })
 
