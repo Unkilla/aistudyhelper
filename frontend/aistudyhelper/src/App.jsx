@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import { GeneratedContent } from './GeneratedViews'
 
@@ -14,7 +14,17 @@ function App() {
   const [answer, setAnswer] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [actionMessage, setActionMessage] = useState('')
-  const [settings, setSettings] = useState({ defaultTool: 'Lesson', difficulty: 'Balanced', explanations: true, compact: false })
+  const [settings, setSettings] = useState(() => {
+    try {
+      return { defaultTool: 'Lesson', difficulty: 'Medium', explanations: true, compact: false, theme: 'dark', ...JSON.parse(localStorage.getItem('studymate-settings') || '{}') }
+    } catch {
+      return { defaultTool: 'Lesson', difficulty: 'Medium', explanations: true, compact: false, theme: 'dark' }
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('studymate-settings', JSON.stringify(settings))
+  }, [settings])
 
   const navItems = [['Overview', '⌂'], ['My materials', '▤'], ['Practice', '◇'], ['Presentations', '▣']]
   const tools = [
@@ -49,6 +59,7 @@ function App() {
     const body = new FormData()
     body.append('file', file)
     body.append('type', toolName.toLowerCase())
+    body.append('difficulty', settings.difficulty.toLowerCase())
     try {
       const backendDomain = (import.meta.env.VITE_BACKEND_DOMAIN || 'http://localhost:3001').replace(/\/$/, '')
       const response = await fetch(`${backendDomain}/api/generate`, { method: 'POST', body })
@@ -74,10 +85,10 @@ function App() {
     setActiveNav('Overview')
   }
   const saveSettings = () => { setActionMessage('Preferences saved for this workspace.'); setTimeout(() => setActionMessage(''), 2500) }
-  const settingsPage = <section className="settings-page"><div className="settings-heading"><div><p className="eyebrow">PREFERENCES</p><h1>Make StudyMate yours</h1><p>Choose how your study workspace creates and presents content.</p></div><div className="settings-symbol">⚙</div></div><div className="settings-grid"><label className="setting-card"><span><strong>Default generator</strong><small>Open this tool when you upload notes</small></span><select value={settings.defaultTool} onChange={(event) => setSettings({ ...settings, defaultTool: event.target.value })}><option>Lesson</option><option>Quiz</option><option>Slides</option></select></label><label className="setting-card"><span><strong>Difficulty</strong><small>Used for generated quizzes</small></span><select value={settings.difficulty} onChange={(event) => setSettings({ ...settings, difficulty: event.target.value })}><option>Balanced</option><option>Gentle</option><option>Challenging</option></select></label><label className="setting-card setting-toggle"><span><strong>Show explanations</strong><small>Reveal answer reasoning after checking</small></span><input type="checkbox" checked={settings.explanations} onChange={(event) => setSettings({ ...settings, explanations: event.target.checked })} /><i /></label><label className="setting-card setting-toggle"><span><strong>Compact reading mode</strong><small>Keep generated content tighter on screen</small></span><input type="checkbox" checked={settings.compact} onChange={(event) => setSettings({ ...settings, compact: event.target.checked })} /><i /></label></div><button className="primary-button" onClick={saveSettings}>Save preferences <span>→</span></button>{actionMessage && <p className="action-message" role="status">{actionMessage}</p>}</section>
+  const settingsPage = <section className="settings-page"><div className="settings-heading"><div><p className="eyebrow">PREFERENCES</p><h1>Make StudyMate yours</h1><p>Choose how your study workspace creates and presents content.</p></div><div className="settings-symbol">⚙</div></div><div className="settings-grid"><label className="setting-card"><span><strong>Default generator</strong><small>Open this tool when you upload notes</small></span><select value={settings.defaultTool} onChange={(event) => setSettings({ ...settings, defaultTool: event.target.value })}><option>Lesson</option><option>Quiz</option><option>Slides</option></select></label><label className="setting-card"><span><strong>Question difficulty</strong><small>Used for generated quizzes</small></span><select value={settings.difficulty} onChange={(event) => setSettings({ ...settings, difficulty: event.target.value })}><option>Easy</option><option>Medium</option><option>Hard</option><option>Challenging</option></select></label><label className="setting-card"><span><strong>Workspace theme</strong><small>Choose the look that helps you focus</small></span><select value={settings.theme} onChange={(event) => setSettings({ ...settings, theme: event.target.value })}><option value="light">Light</option><option value="dark">Dark</option></select></label><label className="setting-card setting-toggle"><span><strong>Show explanations</strong><small>Reveal answer reasoning after checking</small></span><input type="checkbox" checked={settings.explanations} onChange={(event) => setSettings({ ...settings, explanations: event.target.checked })} /><i /></label><label className="setting-card setting-toggle"><span><strong>Compact reading mode</strong><small>Keep generated content tighter on screen</small></span><input type="checkbox" checked={settings.compact} onChange={(event) => setSettings({ ...settings, compact: event.target.checked })} /><i /></label></div><button className="primary-button" onClick={saveSettings}>Save preferences <span>→</span></button>{actionMessage && <p className="action-message" role="status">{actionMessage}</p>}</section>
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${settings.theme}`}>
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">✦</span><span>study<span className="brand-accent">mate</span></span></div>
         <nav aria-label="Main navigation"><p className="nav-label">Workspace</p>{navItems.map(([label, icon]) => <button key={label} className={`nav-item ${activeNav === label ? 'active' : ''}`} onClick={() => setActiveNav(label)}><span className="nav-icon">{icon}</span>{label}</button>)}</nav>
